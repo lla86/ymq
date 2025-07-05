@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <title>羽毛球战术轨迹模拟</title>
+  <style>
+    body {
+      text-align: center;
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #f8f9fa;
+      margin: 0;
+      padding: 0;
+    }
+
+    h2 {
+      margin: 20px 0 10px;
+      font-size: 24px;
+      color: #333;
+    }
+
+    canvas {
+      border: 1px solid #ccc;
+      cursor: crosshair;
+      width: 100%;
+      max-width: 400px;
+      height: auto;
+      background: #fff;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      border-radius: 8px;
+      margin-top: 10px;
+    }
+
+    #shotTypeGroup {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin: 15px 0;
+    }
+
+    #shotTypeGroup label {
+      background: #f1f1f1;
+      border-radius: 6px;
+      padding: 6px 10px;
+      cursor: pointer;
+      border: 1px solid #ccc;
+      transition: background 0.2s;
+    }
+
+    #shotTypeGroup input[type="radio"] {
+      margin-right: 4px;
+    }
+
+    #shotTypeGroup label:hover {
+      background: #e2e2e2;
+    }
+
+    button {
+      margin: 10px;
+      padding: 10px 20px;
+      font-size: 16px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+      transition: background-color 0.3s ease, transform 0.2s ease;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+      transform: translateY(-1px);
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+  </style>
+</head>
+<body>
+
+<h2>羽毛球战术轨迹模拟</h2>
+
+<div id="shotTypeGroup">
+  <label><input type="radio" name="shotType" value="serve"> 发球（白）</label>
+  <label><input type="radio" name="shotType" value="drop"> 吊球（蓝）</label>
+  <label><input type="radio" name="shotType" value="smash"> 杀球（红）</label>
+  <label><input type="radio" name="shotType" value="clear"> 挑球（黄）</label>
+  <label><input type="radio" name="shotType" value="drive"> 平抽球（橙）</label>
+  <label><input type="radio" name="shotType" value="net"> 网前球（紫）</label>
+  <label><input type="radio" name="shotType" value="lift"> 挑高球（棕）</label>
+  <label><input type="radio" name="shotType" value="push"> 推球（青）</label>
+  <label><input type="radio" name="shotType" value="block"> 挡球（灰）</label>
+</div>
+
+<div>
+  <button onclick="setUpperStart()">上方发球方开始</button>
+  <button onclick="setLowerStart()">下方发球方开始</button>
+  <button onclick="resetSideBySide()">重置站位</button>
+</div>
+
+<canvas id="court" width="400" height="800"></canvas><br>
+<button onclick="undoLast()">撤销上一步</button>
+<button onclick="clearCanvas()">清空全部</button>
+<button onclick="playAnimation()">播放球路</button>
+
+<script>
+const canvas = document.getElementById("court");
+const ctx = canvas.getContext("2d");
+const courtImg = new Image();
+courtImg.src = "badminton_court2.png"; // Make sure image is in the same folder
+
+const colorMap = {
+  serve: "white",
+  drop: "blue",
+  smash: "red",
+  clear: "yellow",
+  drive: "orange",
+  net: "purple",
+  lift: "brown",
+  push: "cyan",
+  block: "gray"
+};
+
+let clickPoints = [];
+let lines = [];
+
+const players = [
+  { name: "A", x: 150, y: 700, color: "blue", dragging: false },
+  { name: "B", x: 250, y: 700, color: "green", dragging: false },
+  { name: "C", x: 150, y: 100, color: "red", dragging: false },
+  { name: "D", x: 250, y: 100, color: "orange", dragging: false },
+];
+
+courtImg.onload = () => drawEverything();
+
+canvas.addEventListener("pointerdown", (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+  const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+  let dragging = false;
+  for (const player of players) {
+    const dist = Math.hypot(player.x - x, player.y - y);
+    if (dist < 15) {
+      player.dragging = true;
+      dragging = true;
+      break;
+    }
+  }
+
+  if (!dragging) {
+    const selectedShot = document.querySelector('input[name="shotType"]:checked');
+    if (!selectedShot) {
+      clickPoints = [];
+      return;
+    }
+    clickPoints.push({ x, y });
+    if (clickPoints.length === 2) {
+      lines.push({
+        start: clickPoints[0],
+        end: clickPoints[1],
+        type: selectedShot.value,
+      });
+      clickPoints = [];
+      drawEverything();
+    }
+  }
+});
+
+canvas.addEventListener("pointermove", (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+  const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+  for (const player of players) {
+    if (player.dragging) {
+      player.x = x;
+      player.y = y;
+      drawEverything();
+    }
+  }
+});
+
+canvas.addEventListener("pointerup", () => {
+  for (const player of players) {
+    player.dragging = false;
+  }
+});
+
+document.addEventListener("pointerup", (e) => {
+  if (!e.target.closest("#shotTypeGroup") && !e.target.closest("canvas")) {
+    const selected = document.querySelector('input[name="shotType"]:checked');
+    if (selected) selected.checked = false;
+  }
+});
+
+function drawArrow(ctx, from, to, color) {
+  const headLength = 10;
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const angle = Math.atan2(dy, dx);
+  ctx.beginPath();
+  ctx.moveTo(from.x, from.y);
+  ctx.lineTo(to.x, to.y);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(to.x, to.y);
+  ctx.lineTo(to.x - headLength * Math.cos(angle - Math.PI / 6),
+              to.y - headLength * Math.sin(angle - Math.PI / 6));
+  ctx.lineTo(to.x - headLength * Math.cos(angle + Math.PI / 6),
+              to.y - headLength * Math.sin(angle + Math.PI / 6));
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+}
+
+function drawEverything() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(courtImg, 0, 0, canvas.width, canvas.height);
+
+  const typeMap = {
+    serve: "发", drop: "吊", smash: "杀", clear: "挑",
+    drive: "抽", net: "网", lift: "高", push: "推", block: "挡"
+  };
+
+  lines.forEach((line, index) => {
+    drawArrow(ctx, line.start, line.end, colorMap[line.type] || "black");
+
+    const midX = (line.start.x + line.end.x) / 2;
+    const midY = (line.start.y + line.end.y) / 2;
+
+    // ✅ USE CHINESE CHARACTER FROM MAP
+    const shotChar = typeMap[line.type] || "?";
+    const labelText = `#${index + 1} ${shotChar}`;
+
+    ctx.fillStyle = "black";
+    ctx.font = "16px Arial";
+    ctx.fillText(labelText, midX + 5, midY - 5);
+  });
+
+  players.forEach(p => {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 12, 0, 2 * Math.PI);
+    ctx.fillStyle = p.color;
+    ctx.fill();
+
+    ctx.fillStyle = "white";
+    ctx.font = "bold 14px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(p.name, p.x, p.y);
+  });
+}
+
+
+function undoLast() {
+  lines.pop();
+  drawEverything();
+}
+
+function clearCanvas() {
+  lines = [];
+  drawEverything();
+}
+
+function playAnimation() {
+  if (lines.length === 0) return;
+  let i = 0;
+  const ballRadius = 6;
+  const speed = 2;
+
+  function animate() {
+    if (i >= lines.length) return;
+    const { start, end, type } = lines[i];
+    let t = 0;
+
+    function frame() {
+      drawEverything();
+      const x = start.x + (end.x - start.x) * t;
+      const y = start.y + (end.y - start.y) * t;
+      ctx.beginPath();
+      ctx.arc(x, y, ballRadius, 0, 2 * Math.PI);
+      ctx.fillStyle = colorMap[type] || "black";
+      ctx.fill();
+      t += speed / 100;
+      if (t <= 1) requestAnimationFrame(frame);
+      else { i++; setTimeout(animate, 300); }
+    }
+    frame();
+  }
+  animate();
+}
+
+function setUpperStart() {
+  players.forEach(p => {
+    switch (p.name) {
+      case "C": p.x = 250; p.y = 120; break;
+      case "D": p.x = 180; p.y = 270; break;
+      case "A": p.x = 150; p.y = 680; break;
+      case "B": p.x = 220; p.y = 530; break;
+    }
+  });
+  drawEverything();
+}
+
+function setLowerStart() {
+  players.forEach(p => {
+    switch (p.name) {
+      case "A": p.x = 180; p.y = 680; break;
+      case "B": p.x = 220; p.y = 530; break;
+      case "C": p.x = 220; p.y = 120; break;
+      case "D": p.x = 180; p.y = 270; break;
+    }
+  });
+  drawEverything();
+}
+
+function resetSideBySide() {
+  players.forEach(p => {
+    switch (p.name) {
+      case "A": p.x = 150; p.y = 600; break;
+      case "B": p.x = 250; p.y = 600; break;
+      case "C": p.x = 150; p.y = 200; break;
+      case "D": p.x = 250; p.y = 200; break;
+    }
+  });
+  drawEverything();
+}
+</script>
+
+</body>
+</html>
+
+
