@@ -11,13 +11,6 @@
       margin: 0;
       padding: 0;
     }
-
-    h2 {
-      margin: 20px 0 10px;
-      font-size: 24px;
-      color: #333;
-    }
-
     canvas {
       border: 1px solid #ccc;
       cursor: crosshair;
@@ -29,7 +22,6 @@
       border-radius: 8px;
       margin-top: 10px;
     }
-
     #shotTypeGroup {
       display: flex;
       flex-wrap: wrap;
@@ -37,7 +29,6 @@
       gap: 10px;
       margin: 15px 0;
     }
-
     #shotTypeGroup label {
       background: #f1f1f1;
       border-radius: 6px;
@@ -46,15 +37,12 @@
       border: 1px solid #ccc;
       transition: background 0.2s;
     }
-
     #shotTypeGroup input[type="radio"] {
       margin-right: 4px;
     }
-
     #shotTypeGroup label:hover {
       background: #e2e2e2;
     }
-
     button {
       margin: 10px;
       padding: 10px 20px;
@@ -67,14 +55,15 @@
       box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
       transition: background-color 0.3s ease, transform 0.2s ease;
     }
-
     button:hover {
       background-color: #0056b3;
       transform: translateY(-1px);
     }
-
     button:active {
       transform: scale(0.98);
+    }
+    #options {
+      margin: 10px;
     }
   </style>
 </head>
@@ -84,14 +73,14 @@
 
 <div id="shotTypeGroup">
   <label><input type="radio" name="shotType" value="serve"> 发球（白）</label>
+  <label><input type="radio" name="shotType" value="lift"> 高远球（棕）</label>
   <label><input type="radio" name="shotType" value="drop"> 吊球（蓝）</label>
   <label><input type="radio" name="shotType" value="smash"> 杀球（红）</label>
   <label><input type="radio" name="shotType" value="clear"> 挑球（黄）</label>
-  <label><input type="radio" name="shotType" value="drive"> 平抽球（橙）</label>
-  <label><input type="radio" name="shotType" value="net"> 网前球（紫）</label>
-  <label><input type="radio" name="shotType" value="lift"> 挑高球（棕）</label>
+  <label><input type="radio" name="shotType" value="drive"> 平抽（橙）</label>
+  <label><input type="radio" name="shotType" value="net"> 网前小球（紫）</label> 
   <label><input type="radio" name="shotType" value="push"> 推球（青）</label>
-  <label><input type="radio" name="shotType" value="block"> 挡球（灰）</label>
+  <label><input type="radio" name="shotType" value="block"> 挡网（灰）</label>
 </div>
 
 <div>
@@ -105,74 +94,77 @@
 <button onclick="clearCanvas()">清空全部</button>
 <button onclick="playAnimation()">播放球路</button>
 
+<div id="options">
+  <label>显示拍数:
+    <select onchange="setVisibleShots(this.value)">
+      <option value="0">全部</option>
+      <option value="3">最近3拍</option>
+      <option value="5">最近5拍</option>
+      <option value="10">最近10拍</option>
+    </select>
+  </label>
+</div>
+
 <script>
 const canvas = document.getElementById("court");
 const ctx = canvas.getContext("2d");
 const courtImg = new Image();
-courtImg.src = "badminton_court2.png"; // Make sure image is in the same folder
+courtImg.src = "badminton_court2.png";
 
 const colorMap = {
-  serve: "white",
-  drop: "blue",
-  smash: "red",
-  clear: "yellow",
-  drive: "orange",
-  net: "purple",
-  lift: "brown",
-  push: "cyan",
-  block: "gray"
+  serve: "white", drop: "blue", smash: "red", clear: "yellow",
+  drive: "orange", net: "purple", lift: "brown", push: "cyan", block: "gray"
 };
 
-let clickPoints = [];
-let lines = [];
+let clickPoints = [], lines = [], visibleShots = 0;
+let startX = 0, startY = 0;
+let hasDragged = false;
+let holdTimer = null;
+let heldPlayer = null;
 
 const players = [
   { name: "A", x: 150, y: 700, color: "blue", dragging: false },
-  { name: "B", x: 250, y: 700, color: "green", dragging: false },
-  { name: "C", x: 150, y: 100, color: "red", dragging: false },
+  { name: "B", x: 250, y: 700, color: "red", dragging: false },
+  { name: "C", x: 150, y: 100, color: "purple", dragging: false },
   { name: "D", x: 250, y: 100, color: "orange", dragging: false },
 ];
 
 courtImg.onload = () => drawEverything();
 
+function setVisibleShots(n) {
+  visibleShots = parseInt(n);
+  drawEverything();
+}
+
 canvas.addEventListener("pointerdown", (e) => {
   const rect = canvas.getBoundingClientRect();
   const x = (e.clientX - rect.left) * (canvas.width / rect.width);
   const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+  startX = x;
+  startY = y;
+  hasDragged = false;
+  heldPlayer = null;
 
-  let dragging = false;
   for (const player of players) {
     const dist = Math.hypot(player.x - x, player.y - y);
     if (dist < 15) {
-      player.dragging = true;
-      dragging = true;
-      break;
-    }
-  }
-
-  if (!dragging) {
-    const selectedShot = document.querySelector('input[name="shotType"]:checked');
-    if (!selectedShot) {
-      clickPoints = [];
+      heldPlayer = player;
+      holdTimer = setTimeout(() => {
+        player.dragging = true;
+      }, 200);
       return;
     }
-    clickPoints.push({ x, y });
-    if (clickPoints.length === 2) {
-      lines.push({
-        start: clickPoints[0],
-        end: clickPoints[1],
-        type: selectedShot.value,
-      });
-      clickPoints = [];
-      drawEverything();
-    }
   }
+  handleLineDrawing(x, y);
 });
 
 canvas.addEventListener("pointermove", (e) => {
   const rect = canvas.getBoundingClientRect();
   const x = (e.clientX - rect.left) * (canvas.width / rect.width);
   const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+  if (Math.abs(x - startX) > 3 || Math.abs(y - startY) > 3) hasDragged = true;
+
   for (const player of players) {
     if (player.dragging) {
       player.x = x;
@@ -182,10 +174,18 @@ canvas.addEventListener("pointermove", (e) => {
   }
 });
 
-canvas.addEventListener("pointerup", () => {
-  for (const player of players) {
-    player.dragging = false;
+canvas.addEventListener("pointerup", (e) => {
+  if (holdTimer) clearTimeout(holdTimer);
+
+  if (heldPlayer && !heldPlayer.dragging) {
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+    handleLineDrawing(x, y);
   }
+
+  for (const player of players) player.dragging = false;
+  heldPlayer = null;
 });
 
 document.addEventListener("pointerup", (e) => {
@@ -195,10 +195,28 @@ document.addEventListener("pointerup", (e) => {
   }
 });
 
+function handleLineDrawing(x, y) {
+  const selectedShot = document.querySelector('input[name="shotType"]:checked');
+  if (!selectedShot) {
+    clickPoints = [];
+    return;
+  }
+  clickPoints.push({ x, y });
+  if (clickPoints.length === 2) {
+    lines.push({
+      start: clickPoints[0],
+      end: clickPoints[1],
+      type: selectedShot.value,
+      playersSnapshot: players.map(p => ({ ...p })) // 记录球员位置
+    });
+    clickPoints = [];
+    drawEverything();
+  }
+}
+
 function drawArrow(ctx, from, to, color) {
   const headLength = 10;
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
+  const dx = to.x - from.x, dy = to.y - from.y;
   const angle = Math.atan2(dy, dx);
   ctx.beginPath();
   ctx.moveTo(from.x, from.y);
@@ -208,45 +226,35 @@ function drawArrow(ctx, from, to, color) {
   ctx.stroke();
   ctx.beginPath();
   ctx.moveTo(to.x, to.y);
-  ctx.lineTo(to.x - headLength * Math.cos(angle - Math.PI / 6),
-              to.y - headLength * Math.sin(angle - Math.PI / 6));
-  ctx.lineTo(to.x - headLength * Math.cos(angle + Math.PI / 6),
-              to.y - headLength * Math.sin(angle + Math.PI / 6));
+  ctx.lineTo(to.x - headLength * Math.cos(angle - Math.PI / 6), to.y - headLength * Math.sin(angle - Math.PI / 6));
+  ctx.lineTo(to.x - headLength * Math.cos(angle + Math.PI / 6), to.y - headLength * Math.sin(angle + Math.PI / 6));
   ctx.closePath();
   ctx.fillStyle = color;
   ctx.fill();
 }
 
-function drawEverything() {
+function drawEverything(snapshot = null) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(courtImg, 0, 0, canvas.width, canvas.height);
 
-  const typeMap = {
-    serve: "发", drop: "吊", smash: "杀", clear: "挑",
-    drive: "抽", net: "网", lift: "高", push: "推", block: "挡"
-  };
+  const typeMap = { serve: "发", drop: "吊", smash: "杀", clear: "挑", drive: "抽", net: "网", lift: "高", push: "推", block: "挡" };
 
-  lines.forEach((line, index) => {
+  const drawLines = visibleShots > 0 ? lines.slice(-visibleShots) : lines;
+  drawLines.forEach((line, index) => {
     drawArrow(ctx, line.start, line.end, colorMap[line.type] || "black");
-
     const midX = (line.start.x + line.end.x) / 2;
     const midY = (line.start.y + line.end.y) / 2;
-
-    // ✅ USE CHINESE CHARACTER FROM MAP
-    const shotChar = typeMap[line.type] || "?";
-    const labelText = `#${index + 1} ${shotChar}`;
-
     ctx.fillStyle = "black";
     ctx.font = "16px Arial";
-    ctx.fillText(labelText, midX + 5, midY - 5);
+    ctx.fillText(`#${lines.indexOf(line) + 1} ${typeMap[line.type] || "?"}`, midX + 5, midY - 5);
   });
 
-  players.forEach(p => {
+  const activePlayers = snapshot || players;
+  activePlayers.forEach(p => {
     ctx.beginPath();
     ctx.arc(p.x, p.y, 12, 0, 2 * Math.PI);
     ctx.fillStyle = p.color;
     ctx.fill();
-
     ctx.fillStyle = "white";
     ctx.font = "bold 14px Arial";
     ctx.textAlign = "center";
@@ -255,30 +263,18 @@ function drawEverything() {
   });
 }
 
-
-function undoLast() {
-  lines.pop();
-  drawEverything();
-}
-
-function clearCanvas() {
-  lines = [];
-  drawEverything();
-}
+function undoLast() { lines.pop(); drawEverything(); }
+function clearCanvas() { lines = []; drawEverything(); }
 
 function playAnimation() {
   if (lines.length === 0) return;
-  let i = 0;
-  const ballRadius = 6;
-  const speed = 2;
-
+  let i = 0, ballRadius = 6, speed = 2;
   function animate() {
     if (i >= lines.length) return;
-    const { start, end, type } = lines[i];
+    const { start, end, type, playersSnapshot } = lines[i];
     let t = 0;
-
     function frame() {
-      drawEverything();
+      drawEverything(playersSnapshot);
       const x = start.x + (end.x - start.x) * t;
       const y = start.y + (end.y - start.y) * t;
       ctx.beginPath();
@@ -333,5 +329,3 @@ function resetSideBySide() {
 
 </body>
 </html>
-
-
